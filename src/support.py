@@ -51,7 +51,8 @@ def plot_categoricas(dataframe,paleta="mako"):
     for indice, columna in enumerate(df_cat.columns):
         sns.countplot(x=columna, data=df_cat, ax=axes[indice],palette=paleta,order=df_cat[columna].value_counts().index)
         axes[indice].set_title(columna)
-        axes[indice].set_xlabel("")  
+        axes[indice].set_xlabel("")
+        axes[indice].tick_params(axis='x', rotation=60)  
     if len(df_cat.columns)%2!=0:
         fig.delaxes(axes[-1])  
     else:
@@ -118,7 +119,7 @@ def matriz_correlacion(dataframe):
                 vmin=1,
                 vmax=-1,
                 mask=mascara,
-                cmap="hsv")
+                cmap="seismic")
     plt.figure(figsize=(10,15))
     plt.tight_layout()
 
@@ -164,35 +165,86 @@ def exploracion_basica_dataframe(dataframe):
 
     print(f"Los duplicados que tenemos en el conjunto de datos son: {dataframe.duplicated().sum()}")
     print("\n ------------------------------- \n")
-    
+    # generamos un DataFrame con cantidad de valores unicos
+    print("Los unicos que tenemos en el conjunto de datos son:")
+    display(pd.DataFrame(dataframe.nunique(), columns=["count"]))
     
     # generamos un DataFrame para los valores nulos
+    df_nulos = pd.DataFrame({"count": dataframe.isnull().sum(),"% nulos": (dataframe.isnull().sum() / dataframe.shape[0]).round(3) * 100})
+    df_nulos = df_nulos[df_nulos["count"] > 0]
+    # Muestra el resultado
     print("Los nulos que tenemos en el conjunto de datos son:")
-    df_nulos = pd.DataFrame(dataframe.isnull().sum() / dataframe.shape[0] * 100, columns = ["%_nulos"])
-    display(df_nulos[df_nulos["%_nulos"] > 0])
-    
+    display(df_nulos)
+        
+
     print("\n ------------------------------- \n")
     print(f"Los tipos de las columnas son:")
     display(pd.DataFrame(dataframe.dtypes, columns = ["tipo_dato"]))
-    
-    
     print("\n ------------------------------- \n")
+
+
     print("Los valores que tenemos para las columnas categóricas son: ")
     dataframe_categoricas = pd.DataFrame(dataframe.select_dtypes(include = "O"))
-    print(dataframe_categoricas.columns)
-    
+    display(pd.DataFrame(dataframe_categoricas.columns,columns=["columna"]))
+    print("\n ------------------------------- \n")
+
+
+    print("Los valores que tenemos para las columnas numéricas son: ")
+    dataframe_numericas = pd.DataFrame(dataframe.select_dtypes(include = np.number))
+    display(pd.DataFrame(dataframe_numericas.columns,columns=["columna"]))
+    print("\n ------------------------------- \n")
+
+
     for col in dataframe_categoricas.columns:
         print(f"La columna {col.upper()} tiene las siguientes valore únicos:")
-        display(pd.DataFrame(dataframe[col].value_counts()))
         if dataframe[col].isnull().sum()>0:
-            print(f"La columna {col.upper()} tiene {dataframe[col].isnull().sum()} valores nulos")
+            print(f"--->La columna {col.upper()} tiene valores nulos")
+        df_counts = pd.DataFrame({"count": dataframe[col].value_counts(dropna=False),"porcentaje (%)": (dataframe[col].value_counts(dropna=False, normalize=True) * 100).round(3)})
+        display(df_counts)
         print("\n ------------------------------- \n")
-
-    print("Los valores que tenemos para las columnas numericas son: ")
+    
+    print("_______________________________________________________")
+    print("Los valores que tenemos para las columnas numéricas son: ")
     dataframe_numericas = pd.DataFrame(dataframe.select_dtypes(include =np.number))
     
     for col in dataframe_numericas.columns:
         print(f"La columna {col.upper()} tiene las siguientes valore únicos:")
-        display(pd.DataFrame(dataframe[col].value_counts())) 
         if dataframe[col].isnull().sum()>0:
-            print(f"La columna {col.upper()} tiene {dataframe[col].isnull().sum()} valores nulos")   
+            print(f"--->La columna {col.upper()} tiene valores nulos")
+        df_counts = pd.DataFrame({"count": dataframe[col].value_counts(dropna=False),"porcentaje (%)": (dataframe[col].value_counts(dropna=False, normalize=True) * 100).round(3)})
+        display(df_counts)
+        print("\n ------------------------------- \n")
+
+
+
+
+def comparador_estaditicos(df_list, names=None):
+    # Obtener las columnas en común entre todos los DataFrames
+    common_columns = set(df_list[0].columns)
+    for df in df_list[1:]:
+        common_columns &= set(df.columns)
+    common_columns = list(common_columns)
+
+    # Lista para almacenar cada DataFrame descriptivo
+    descriptive_dfs = []
+
+    # Genera descripciones para cada DataFrame y las almacena
+    for i, df in enumerate(df_list):
+        desc_df = df[common_columns].describe().T  # Transpone y usa solo las columnas comunes
+        desc_df['DataFrame'] = names[i] if names else f'DF_{i+1}'
+        descriptive_dfs.append(desc_df)
+
+    # Combina todos los DataFrames descriptivos en uno solo
+    comparative_df = pd.concat(descriptive_dfs)
+    comparative_df = comparative_df.set_index(['DataFrame', comparative_df.index])  # Índice jerárquico
+
+    # Encuentra las diferencias por fila (compara cada estadística entre DataFrames)
+    diff_df = comparative_df.groupby(level=1).apply(lambda x: x.nunique() > 1).any(axis=1)
+
+    # Filtra solo las filas que tengan diferencias y verifica que los índices existen
+    available_indices = comparative_df.index.get_level_values(1).unique()
+    indices_with_diff = [index for index in diff_df[diff_df].index if index in available_indices]
+
+    comparative_df_diff = comparative_df.loc[(slice(None), indices_with_diff), :]
+
+    return comparative_df_diff
